@@ -4,6 +4,11 @@ Delphi component for monitoring audio device changes using Windows Core Audio AP
 
 ## Enhanced Version - What's New
 
+### Event Filtering System
+- **Duplicate Event Prevention**: Filters multiple events for same device change
+- **Configurable Timeout**: EventFilterTimeout property (default 500ms)
+- **Smart Detection**: Only triggers on actual device changes, not Windows internal events
+
 ### Error Handling
 - HRESULT checks for all COM calls
 - Exception handling and error logging
@@ -55,6 +60,7 @@ Delphi component for monitoring audio device changes using Windows Core Audio AP
 ```pascal
 AudioMonitor := TAudioDeviceMonitor.Create(Self);
 AudioMonitor.OnDefaultDeviceChanged := MyDeviceChangeHandler;
+AudioMonitor.EventFilterTimeout := 300; // Optional: 300ms filter timeout
 
 procedure TForm1.MyDeviceChangeHandler(Sender: TObject; const DeviceInfo: TAudioDeviceInfo);
 begin
@@ -64,4 +70,4 @@ end;
 
 ## Key Improvements Over Original
 
-The enhanced version provides better reliability for detecting audio device changes like switching from speakers to headphones, with proper error handling and thread-safe event notifications.
+The enhanced version provides better reliability for detecting audio device changes like switching from speakers to headphones, with proper error handling, thread-safe event notifications, and intelligent event filtering to prevent duplicate notifications.
