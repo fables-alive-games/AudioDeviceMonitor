@@ -97,6 +97,12 @@ type
     FInitialized: Boolean;
     FLastError: string;
 
+    // Event filtering
+    FLastEventTime: TDateTime;
+    FLastDeviceId: string;
+    FLastDeviceName: string;
+    FEventFilterTimeout: Integer; // milliseconds
+
     // Events
     FOnDefaultDeviceChanged: TAudioDeviceChangedEvent;
     FOnDeviceAdded: TAudioDeviceChangedEvent;
@@ -110,6 +116,7 @@ type
     function GetDeviceInfo(const DeviceId: PWideChar; Flow: EDataFlow; Role: ERole; State: DWORD): TAudioDeviceInfo;
     procedure SafeCallEvent(EventProc: TProc);
     function PropVariantClear(var pvar: PROPVARIANT): HResult;
+    function ShouldProcessEvent(const DeviceInfo: TAudioDeviceInfo): Boolean;
 
   protected
     // IMMNotificationClient interface implementations
@@ -139,6 +146,7 @@ type
     // Properties
     property Initialized: Boolean read FInitialized;
     property LastError: string read FLastError;
+    property EventFilterTimeout: Integer read FEventFilterTimeout write FEventFilterTimeout default 500;
 
   published
     // Published events
@@ -171,7 +179,7 @@ const
 
 procedure Register;
 begin
-  RegisterComponents('Audio', [TAudioDeviceMonitor]);
+  RegisterComponents('Fables Alive Games', [TAudioDeviceMonitor]);
 end;
 
 // Helper functions implementation
@@ -216,6 +224,10 @@ begin
   inherited Create(AOwner);
   FInitialized := False;
   FLastError := '';
+  FEventFilterTimeout := 500; // 500ms filter timeout
+  FLastEventTime := 0;
+  FLastDeviceId := '';
+  FLastDeviceName := '';
 
   if not (csDesigning in ComponentState) then
     Initialize;
@@ -293,6 +305,32 @@ function TAudioDeviceMonitor.PropVariantClear(var pvar: PROPVARIANT): HResult;
 begin
   // Use system PropVariantClear from ActiveX
   Result := Winapi.ActiveX.PropVariantClear(pvar);
+end;
+
+function TAudioDeviceMonitor.ShouldProcessEvent(const DeviceInfo: TAudioDeviceInfo): Boolean;
+var
+  CurrentTime: TDateTime;
+  TimeDiff: Double;
+begin
+  Result := True;
+  CurrentTime := Now;
+
+  // Calculate time difference in milliseconds
+  TimeDiff := (CurrentTime - FLastEventTime) * 24 * 60 * 60 * 1000;
+
+  // Filter duplicate events within timeout period
+  if (TimeDiff < FEventFilterTimeout) and
+     (DeviceInfo.DeviceId = FLastDeviceId) and
+     (DeviceInfo.DeviceName = FLastDeviceName) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  // Update last event info
+  FLastEventTime := CurrentTime;
+  FLastDeviceId := DeviceInfo.DeviceId;
+  FLastDeviceName := DeviceInfo.DeviceName;
 end;
 
 function TAudioDeviceMonitor.GetDeviceFriendlyName(const DeviceId: PWideChar): string;
@@ -375,15 +413,19 @@ begin
   try
     DeviceInfo := GetDeviceInfo(pwstrDeviceId, flow, role, DEVICE_STATE_ACTIVE);
 
-    SafeCallEvent(
-      procedure
-      begin
-        if Assigned(FOnDefaultDeviceChanged) then
-          FOnDefaultDeviceChanged(Self, DeviceInfo);
-        if Assigned(FOnAnyDeviceChanged) then
-          FOnAnyDeviceChanged(Self);
-      end
-    );
+    // Only process if not a duplicate event
+    if ShouldProcessEvent(DeviceInfo) then
+    begin
+      SafeCallEvent(
+        procedure
+        begin
+          if Assigned(FOnDefaultDeviceChanged) then
+            FOnDefaultDeviceChanged(Self, DeviceInfo);
+          if Assigned(FOnAnyDeviceChanged) then
+            FOnAnyDeviceChanged(Self);
+        end
+      );
+    end;
 
     Result := S_OK;
   except
